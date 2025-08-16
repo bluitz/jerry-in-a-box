@@ -3,6 +3,8 @@
 
 
 <sub>Concept: Raspberry Pi 5 with USB audio interface (guitar in / line out), OLED screen, and footswitches in a compact enclosure.</sub>
+
+
 An AI‑assisted guitar pedal built on a Raspberry Pi that listens to your playing, recognizes the chords in real time, looks at the last few you played, and figures out which Jerry Garcia/Grateful Dead song you’re likely playing. It then shows the chord sequence on an LED/OLED screen so you can jam without stopping to check a chart.
 
 ## What it does
