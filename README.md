@@ -1,5 +1,8 @@
 ## Jerry in a Box
 
+![Jerry in a Box – Raspberry Pi 5 pedal with audio I/O and OLED](docs/images/pedal-concept.jpg)
+<sub>Concept: Raspberry Pi 5 with USB audio interface (guitar in / line out), OLED screen, and footswitches in a compact enclosure.</sub>
+
 ```mermaid
 flowchart TD
   G["Guitar / Audio In"] --> I["USB Audio Interface"]
