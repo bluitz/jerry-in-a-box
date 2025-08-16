@@ -1,7 +1,0 @@
----
-description: 
-globs: 
-alwaysApply: false
----
-Do all work in the ~/bitsyAgent directory.  This maps to the jmunning@10.0.0.82:~/bitsyAgent/ directory on the raspberrypi
-The name of this project is now bitsy or bitsyAgent, don't use jerry-in-a-box anymore
