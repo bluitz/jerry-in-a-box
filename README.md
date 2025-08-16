@@ -1,5 +1,42 @@
 ## Jerry in a Box
 
+```mermaid
+flowchart TD
+  G["Guitar / Audio In"] --> I["USB Audio Interface"]
+  I --> PI["Raspberry Pi"]
+
+  subgraph DSP["Real-time DSP on Pi"]
+    A["Windowing + Zero-padded FFT"]
+    B["Peak Picking -> Chroma Vector"]
+    C["Chord Estimation + Confidence Smoothing"]
+  end
+  PI --> A --> B --> C
+
+  W["Rolling Progression Window (last N chords)"]
+  C --> W
+  DB["Song Database (songs.json)"]
+  M["Similarity Matching"]
+  W --> M
+  DB --> M
+
+  OAI{"AI Assist (OpenAI)"}
+  M -->|ambiguous| OAI
+  OAI --> M
+
+  D["OLED/LED Display"]
+  M --> D
+  C --> D
+
+  subgraph Voice["Optional Voice Q&A"]
+    MIC["Microphone"]
+    SR["SpeechRecognition"]
+    OAI2["OpenAI"]
+    TTS["Text-to-Speech"]
+  end
+  MIC --> SR --> OAI2 --> TTS
+  TTS --> PI
+```
+
 An AI‑assisted guitar pedal built on a Raspberry Pi that listens to your playing, recognizes the chords in real time, looks at the last few you played, and figures out which Jerry Garcia/Grateful Dead song you’re likely playing. It then shows the chord sequence on an LED/OLED screen so you can jam without stopping to check a chart.
 
 ### Why this exists
