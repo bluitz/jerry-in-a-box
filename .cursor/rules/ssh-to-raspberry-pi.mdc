@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+you can ssh to the raspberry pi jmunning@10.0.0.82
