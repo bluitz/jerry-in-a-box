@@ -307,6 +307,7 @@ class BitsyAgent:
             "- Always be encouraging and positive\n"
             "- You have a cute head that moves expressively like a pet when you feel emotions\n"
             "- You love coming when called like a loyal pet dog\n"
+            "- You are a race car so you love talking about transformers and Legos\n"
             "\n"
             "When the user says something, decide if they want you to:\n"
             "1. Drive/move (use drive function)\n"
@@ -638,7 +639,8 @@ class BitsyAgent:
                     
                     # Run microphone operation in separate thread with timeout
                     logger.debug("Creating ThreadPoolExecutor for microphone operation")
-                    with concurrent.futures.ThreadPoolExecutor() as executor:
+                    executor = concurrent.futures.ThreadPoolExecutor()
+                    try:
                         logger.debug("Submitting microphone task to thread pool")
                         future = executor.submit(do_listen)
                         try:
@@ -649,6 +651,8 @@ class BitsyAgent:
                             logger.error("Microphone operation timed out - audio device may be locked")
                             logger.debug("Attempting to cancel future task")
                             future.cancel()  # Try to cancel the hanging task
+                            logger.debug("Forcing executor shutdown")
+                            executor.shutdown(wait=False)  # Don't wait for hanging threads
                             logger.debug("Centering head after timeout")
                             self._center_head()
                             logger.debug("_listen_once returning None due to timeout")
@@ -657,12 +661,21 @@ class BitsyAgent:
                             logger.error(f"Microphone operation failed: {e}")
                             logger.debug("Attempting to cancel future task after exception")
                             future.cancel()
+                            logger.debug("Forcing executor shutdown after exception")
+                            executor.shutdown(wait=False)
                             logger.debug("Centering head after microphone error")
                             self._center_head()
                             logger.debug("_listen_once returning None due to microphone error")
                             return None
+                    finally:
+                        # Always ensure executor is shut down
+                        try:
+                            logger.debug("Final executor shutdown in finally block")
+                            executor.shutdown(wait=False)
+                        except:
+                            logger.debug("Executor already shut down")
                     
-                    logger.debug("ThreadPoolExecutor context manager exited successfully")
+                    logger.debug("ThreadPoolExecutor cleanup completed successfully")
                         
                 except sr.WaitTimeoutError:
                     logger.debug("Listen timeout - returning to center")
@@ -782,12 +795,46 @@ class BitsyAgent:
         # No tool call – just chat content
         return msg.content or ""
 
+    def _generate_introduction(self) -> str:
+        """Generate an excited introduction when Bitsy starts up."""
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": self.system_prompt},
+                    {"role": "user", "content": "You just started up and are ready to listen for commands! Give a super excited, short introduction with your name, Bitsy,that shows you're happy to see everyone and ready to play. Mention that you're ready to drive, play with lights, and chat and play legos or transformers. Keep it brief and energetic like an excited puppy who just woke up!"}
+                ],
+                max_tokens=100
+            )
+            return response.choices[0].message.content or "*BEEP BEEP* Hi everyone! Bitsy is online and ready to play!"
+        except Exception as e:
+            logger.error(f"Error generating introduction: {e}")
+            # Fallback introduction
+            return "*BEEP BEEP* Hi everyone! I'm Bitsy and I'm SO excited to play! I can drive around, change my lights, or just chat with you! What should we do first?"
+
+    def _introduce_myself(self) -> None:
+        """Give an excited introduction when starting up."""
+        logger.info("Bitsy introducing itself")
+        introduction = self._generate_introduction()
+        print(f"[Bitsy] Starting up: {introduction}")
+        
+        # Do a little excited head movement if available
+        if not self.disable_head_movements and self.servo_ctrl:
+            try:
+                self._head_excited()
+            except Exception as e:
+                logger.error(f"Head movement failed during introduction: {e}")
+        
+        # Speak the introduction
+        self._speak(introduction)
+
     # ------------------------------------------------------------------
     #  Public run loop
     # ------------------------------------------------------------------
     def run_forever(self) -> None:
         """Main loop: listen, chat, act, speak."""
         logger.info("Starting Bitsy main loop")
+        self._introduce_myself() # Introduce Bitsy at startup
         while True:
             try:
                 logger.info("=== Starting new conversation cycle ===")
