@@ -117,14 +117,6 @@ While running, you can also drive it from the keyboard for testing:
 
 The software runs on macOS or Linux for development; the pedal experience shines on the Pi with the screen and footswitch attached.
 
-## For recruiters (what this demonstrates)
-
-- Hardware + software integration: audio IO, displays, input devices
-- Applied DSP: FFT/chroma, confidence scoring, smoothing
-- ML/AI product thinking: lightweight local heuristics plus cloud AI assist when ambiguous
-- UX under constraints: latency, readability, foot‑controlled flows
-- Pragmatic shipping: JSON data sources, CLI + on‑device UI, scripts for content ingestion
-
 ## Roadmap / future improvements
 
 - Generalization: make the pedal configurable to detect songs for **any band or genre** by swapping in different chord corpora.
