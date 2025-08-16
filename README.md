@@ -3,6 +3,24 @@
 
 
 <sub>Concept: Raspberry Pi 5 with USB audio interface (guitar in / line out), OLED screen, and footswitches in a compact enclosure.</sub>
+An AI‑assisted guitar pedal built on a Raspberry Pi that listens to your playing, recognizes the chords in real time, looks at the last few you played, and figures out which Jerry Garcia/Grateful Dead song you’re likely playing. It then shows the chord sequence on an LED/OLED screen so you can jam without stopping to check a chart.
+
+## What it does
+
+- **Real‑time chord detection**: Streams audio in, performs FFT/chroma analysis, and detects the most likely chord/note with a confidence score.
+- **Rolling progression memory**: Keeps track of your last few chords to form a short progression window.
+- **Song identification**: Compares the window against a curated Garcia/Grateful Dead progression database and can use an AI assist to choose the best match when multiple songs are plausible.
+- **On‑pedal display**: Shows current chord, recent chords, best‑match songs, and the next likely chords on a small LED/OLED screen.
+- **Hands‑free questions (optional)**: Ask music‑theory questions via mic ("What scale over this?"), answered with OpenAI.
+
+## How it works (signal flow)
+
+1. Audio In (guitar/DI/mic) → USB audio interface → Raspberry Pi.
+2. Streaming DSP: windowing + zero‑padded FFT → peak picking → chroma vector.
+3. Chord estimation: template matching (major/minor/7/maj7/power) + consistency smoothing.
+4. Progression window: maintain last N chords; compare against song progressions in `jerry_in_a_box/data/songs.json`.
+5. AI assist: when there are several high‑confidence candidates, call OpenAI to adjudicate using context about Garcia progressions and your recent chords.
+6. Display: render current chord, last N, top matches, and predicted next chords on the pedal’s screen.
 
 ```mermaid
 flowchart TD
@@ -40,29 +58,6 @@ flowchart TD
   MIC --> SR --> OAI2 --> TTS
   TTS --> PI
 ```
-
-An AI‑assisted guitar pedal built on a Raspberry Pi that listens to your playing, recognizes the chords in real time, looks at the last few you played, and figures out which Jerry Garcia/Grateful Dead song you’re likely playing. It then shows the chord sequence on an LED/OLED screen so you can jam without stopping to check a chart.
-
-### Why this exists
-
-I love building end‑to‑end systems that mix hardware, DSP, and AI. This project is a hobby build aimed at showcasing product engineering craft for roles at companies like OpenAI and Anthropic: tight feedback loops, pragmatic ML, delightful UX, and shipping on real hardware.
-
-## What it does
-
-- **Real‑time chord detection**: Streams audio in, performs FFT/chroma analysis, and detects the most likely chord/note with a confidence score.
-- **Rolling progression memory**: Keeps track of your last few chords to form a short progression window.
-- **Song identification**: Compares the window against a curated Garcia/Grateful Dead progression database and can use an AI assist to choose the best match when multiple songs are plausible.
-- **On‑pedal display**: Shows current chord, recent chords, best‑match songs, and the next likely chords on a small LED/OLED screen.
-- **Hands‑free questions (optional)**: Ask music‑theory questions via mic ("What scale over this?"), answered with OpenAI.
-
-## How it works (signal flow)
-
-1. Audio In (guitar/DI/mic) → USB audio interface → Raspberry Pi.
-2. Streaming DSP: windowing + zero‑padded FFT → peak picking → chroma vector.
-3. Chord estimation: template matching (major/minor/7/maj7/power) + consistency smoothing.
-4. Progression window: maintain last N chords; compare against song progressions in `jerry_in_a_box/data/songs.json`.
-5. AI assist: when there are several high‑confidence candidates, call OpenAI to adjudicate using context about Garcia progressions and your recent chords.
-6. Display: render current chord, last N, top matches, and predicted next chords on the pedal’s screen.
 
 ## Quickstart
 
