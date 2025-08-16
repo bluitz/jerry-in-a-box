@@ -1,6 +1,7 @@
 ## Jerry in a Box
+<img width="1024" height="1024" alt="pedal" src="https://github.com/user-attachments/assets/d38b5b71-6ff1-4bc9-a338-3a93b61e7be2" />
 
-![Jerry in a Box – Raspberry Pi 5 pedal with audio I/O and OLED](docs/images/pedal-concept.jpg)
+
 <sub>Concept: Raspberry Pi 5 with USB audio interface (guitar in / line out), OLED screen, and footswitches in a compact enclosure.</sub>
 
 ```mermaid
