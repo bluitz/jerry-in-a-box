@@ -21,3 +21,6 @@ app/web/dist/
 
 # Reference test recordings (large audio, copyrighted)
 test-audio/
+
+# Generated test results
+app/tests/results/
