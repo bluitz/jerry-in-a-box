@@ -86,13 +86,17 @@ class MatcherConfig:
     bag_epsilon: float = 0.08
     # HMM transition smoothing: probability of self-loop added to bigram
     hmm_self_loop: float = 0.55
-    # Decision rule
-    decision_min_obs: int = 24
+    # Decision rule. NOTE: with the chord segmenter in place, each
+    # observation corresponds to ~1 chord (one half- to full-bar). 30s of
+    # music yields ~15-30 observations at 60-180 BPM, so the obs gate is
+    # set conservatively below that and the time gate (decision_min_seconds)
+    # is the dominant constraint.
+    decision_min_obs: int = 12
     decision_min_seconds: float = 30.0  # wall-clock time before any decision
     decision_min_prob: float = 0.55     # top-1 posterior probability
     decision_min_ratio: float = 2.0     # top1/top2 probability ratio
-    decision_sustain: int = 8           # frames meeting criteria (within window)
-    decision_sustain_window: int = 12   # window size for sustain check
+    decision_sustain: int = 4           # observations meeting criteria (within window)
+    decision_sustain_window: int = 6    # window size for sustain check
     # How many songs to return in each update
     top_k: int = 20
     # Sliding window — drop oldest evidence for songs that fall too far behind

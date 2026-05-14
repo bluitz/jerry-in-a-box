@@ -8,6 +8,7 @@
 // Posts to main thread:
 //   { type:"note",   midi, pc, freq, confidence, rms, t }
 //   { type:"chroma", chroma, rms, t }
+//   { type:"onset",  rms, t }     // strum/attack detected
 //
 // Plain JS (not TS) so it ships as-is to the browser; AudioWorklet
 // modules must be served as a real JS file.
@@ -19,6 +20,11 @@ const YIN_THRESHOLD = 0.15;
 const F_MIN = 70;
 const F_MAX = 1500;
 const SMOOTH_N = 3;
+// Onset detection
+const ONSET_RATIO = 1.6;        // current RMS must exceed N× recent baseline
+const ONSET_FLOOR = 0.025;      // and exceed an absolute floor
+const ONSET_MIN_GAP = 0.12;     // minimum seconds between onsets (≈8th note at 250 BPM)
+const ONSET_BASELINE_TC = 0.5;  // exponential time-constant (s) for baseline RMS
 
 class YinDetector extends AudioWorkletProcessor {
   constructor() {
@@ -29,6 +35,9 @@ class YinDetector extends AudioWorkletProcessor {
     this.pcHistory = [];
     this.startTime = currentTime;
     this.d = new Float32Array(FRAME / 2);
+    this.rmsBaseline = 0;
+    this.lastOnsetT = -1;
+    this.aboveThreshold = false;  // for edge-triggered onset
   }
 
   process(inputs) {
@@ -60,6 +69,23 @@ class YinDetector extends AudioWorkletProcessor {
     }
 
     const tNow = currentTime - this.startTime;
+
+    // Onset detection: edge-triggered when RMS rises sharply above a
+    // slow exponential baseline, with a min gap to suppress double-fires.
+    const dt = HOP / sampleRate;  // ~11.6 ms at 44100
+    const alpha = 1 - Math.exp(-dt / ONSET_BASELINE_TC);
+    if (this.rmsBaseline === 0) this.rmsBaseline = rms;
+    const baseline = this.rmsBaseline;
+    const isPeak = rms > ONSET_FLOOR && rms > baseline * ONSET_RATIO;
+    if (isPeak && !this.aboveThreshold
+        && (this.lastOnsetT < 0 || tNow - this.lastOnsetT >= ONSET_MIN_GAP)) {
+      this.lastOnsetT = tNow;
+      this.port.postMessage({ type: "onset", rms, t: tNow });
+    }
+    this.aboveThreshold = isPeak;
+    // Update baseline AFTER threshold check so a single attack doesn't
+    // immediately raise the baseline to its own level.
+    this.rmsBaseline = baseline + alpha * (rms - baseline);
 
     // Chroma every hop, regardless of pitch detectability.
     const chroma = computeChroma(frame, sampleRate);

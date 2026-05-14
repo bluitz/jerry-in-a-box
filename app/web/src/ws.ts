@@ -8,6 +8,7 @@ export type ServerUpdate = {
   n_obs: number;
   entropy: number;
   elapsed_seconds: number;
+  bpm: number;
 };
 
 export type ServerReady = { type: "ready"; n_songs: number };
@@ -55,6 +56,11 @@ export class MatcherClient {
   sendNote(pc: number, confidence: number, t: number): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws.send(JSON.stringify({ type: "note", pc, confidence, t }));
+  }
+
+  sendBpm(bpm: number, confidence: number): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({ type: "bpm", bpm, confidence }));
   }
 
   reset(): void {

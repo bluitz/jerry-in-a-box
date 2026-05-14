@@ -9,6 +9,7 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as
 const statusEl   = $<HTMLDivElement>("#status");
 const startBtn   = $<HTMLButtonElement>("#start");
 const resetBtn   = $<HTMLButtonElement>("#reset");
+const bpmEl      = $<HTMLSpanElement>("#bpm");
 const metaEl     = $<HTMLSpanElement>("#meta");
 const nowNoteEl  = $<HTMLDivElement>("#now-note");
 const nowDetail  = $<HTMLDivElement>("#now-detail");
@@ -199,6 +200,11 @@ async function startListening(): Promise<void> {
       }
     },
     onChroma: (e: ChromaEvent) => drawChroma(e.chroma),
+    onBpm: (e) => {
+      bpmEl.textContent = `${e.bpm.toFixed(0)} BPM`;
+      bpmEl.title = `confidence ${(e.confidence * 100).toFixed(0)}%`;
+      client?.sendBpm(e.bpm, e.confidence);
+    },
     onError: (msg) => setStatus(`mic error: ${msg}`, "error"),
   });
 
@@ -238,6 +244,8 @@ function clearUI(): void {
   nowNoteEl.textContent = "—";
   nowDetail.textContent = "—";
   top20El.innerHTML = "";
+  bpmEl.textContent = "— BPM";
+  bpmEl.title = "";
   for (const b of chromaBars) b.style.height = "0%";
   lastUpdate = undefined;
   decidedSongId = null;

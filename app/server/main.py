@@ -11,6 +11,7 @@ WebSocket protocol (JSON messages):
 
   client -> server
     {"type": "note", "pc": 0..11, "confidence": 0..1, "t": float}
+    {"type": "bpm",  "bpm": float, "confidence": 0..1}
     {"type": "reset"}
     {"type": "config", "config": {...}}            # update matcher config
     {"type": "ping"}
@@ -18,11 +19,13 @@ WebSocket protocol (JSON messages):
   server -> client
     {"type": "ready", "n_songs": int}
     {"type": "update",
-     "top":   [{"id","title","prob","page"}, ...],   # top-5
+     "top":   [{"id","title","prob","page"}, ...],
      "decided": bool,
      "decided_song_id": str | null,
      "n_obs": int,
-     "entropy": float}
+     "entropy": float,
+     "elapsed_seconds": float,
+     "bpm": float}
     {"type": "pong"}
     {"type": "error", "message": str}
 
@@ -41,7 +44,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.matcher import Matcher, MatcherConfig, NoteEvent
+from app.matcher import (
+    ChordSegmenter, Matcher, MatcherConfig, NoteEvent, SegmenterConfig,
+)
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -114,8 +119,9 @@ def create_app() -> FastAPI:
     @app.websocket("/ws")
     async def ws(ws: WebSocket):
         await ws.accept()
-        # Per-session matcher.
+        # Per-session matcher + per-session chord segmenter.
         matcher = Matcher(songs_db["songs"], page_index, MatcherConfig())
+        segmenter = ChordSegmenter(SegmenterConfig())
         await ws.send_json({"type": "ready", "n_songs": matcher.n_songs})
 
         last_send = 0.0
@@ -139,16 +145,30 @@ def create_app() -> FastAPI:
                     except (KeyError, ValueError, TypeError):
                         await ws.send_json({"type": "error", "message": "bad note event"})
                         continue
-                    update = matcher.update(NoteEvent(pitch_class=pc, confidence=conf, t=t))
+                    # Buffer raw frames; only feed the matcher when the
+                    # segmenter closes a chord segment.
+                    consolidated = segmenter.add(NoteEvent(
+                        pitch_class=pc, confidence=conf, t=t,
+                    ))
+                    if consolidated is None:
+                        continue
+                    update = matcher.update(consolidated)
                     now = time.monotonic()
-                    # Always send on a decision; otherwise rate-limit.
                     if update.decided or (now - last_send) >= 1.0 / SEND_HZ:
                         last_send = now
-                        await ws.send_json(_update_to_dict(update))
+                        await ws.send_json(_update_to_dict(update, segmenter.bpm))
+                elif kind == "bpm":
+                    try:
+                        bpm = float(obj["bpm"])
+                    except (KeyError, ValueError, TypeError):
+                        await ws.send_json({"type": "error", "message": "bad bpm event"})
+                        continue
+                    segmenter.set_bpm(bpm)
                 elif kind == "reset":
                     matcher.reset()
+                    segmenter.reset()
                     update = matcher._compute_top()
-                    await ws.send_json(_update_to_dict(update))
+                    await ws.send_json(_update_to_dict(update, segmenter.bpm))
                 elif kind == "ping":
                     await ws.send_json({"type": "pong"})
                 else:
@@ -176,7 +196,7 @@ def create_app() -> FastAPI:
     return app
 
 
-def _update_to_dict(update) -> dict:
+def _update_to_dict(update, bpm: float = 0.0) -> dict:
     return {
         "type": "update",
         "top": [
@@ -188,6 +208,7 @@ def _update_to_dict(update) -> dict:
         "n_obs": int(update.n_obs),
         "entropy": float(update.entropy),
         "elapsed_seconds": float(update.elapsed_seconds),
+        "bpm": float(bpm),
     }
 
 

@@ -57,10 +57,15 @@ def test_ws_basic_round_trip(client):
         pong = ws.receive_json()
         assert pong["type"] == "pong"
 
-        # Send a small burst of notes interleaved with pings, so we know
-        # exactly when the server is "caught up" and can read updates.
-        for pc in [7, 11, 2, 0, 4, 7, 7, 11, 2, 2, 6, 9] * 2:
-            ws.send_json({"type": "note", "pc": pc, "confidence": 0.9, "t": 0.0})
+        # Send notes with real timestamps so the chord segmenter actually
+        # closes segments (it buffers until the segment duration elapses).
+        # At default 100 BPM, min segment ≈ 1.2s; we use t-spacing of 0.1s
+        # so a burst of 24 frames spans 2.4s and produces ≥ 1 segment.
+        chords = [7, 11, 2, 0, 4, 7, 9, 2, 6, 9, 0, 7]
+        t = 0.0
+        for pc in chords * 4:  # 48 frames over 4.8s
+            ws.send_json({"type": "note", "pc": pc, "confidence": 0.9, "t": t})
+            t += 0.1
         ws.send_json({"type": "ping"})
 
         # Drain: read messages until we see the pong sentinel.
