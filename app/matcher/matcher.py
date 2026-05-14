@@ -86,12 +86,13 @@ class MatcherConfig:
     bag_epsilon: float = 0.08
     # HMM transition smoothing: probability of self-loop added to bigram
     hmm_self_loop: float = 0.55
-    # Decision rule — strict so a "decision" really means it.
+    # Decision rule
     decision_min_obs: int = 24
     decision_min_seconds: float = 30.0  # wall-clock time before any decision
-    decision_min_prob: float = 0.92
-    decision_min_ratio: float = 4.0   # top1/top2
-    decision_sustain: int = 10        # consecutive updates meeting criteria
+    decision_min_prob: float = 0.55     # top-1 posterior probability
+    decision_min_ratio: float = 2.0     # top1/top2 probability ratio
+    decision_sustain: int = 8           # frames meeting criteria (within window)
+    decision_sustain_window: int = 12   # window size for sustain check
     # How many songs to return in each update
     top_k: int = 20
     # Sliding window — drop oldest evidence for songs that fall too far behind
@@ -165,7 +166,7 @@ class Matcher:
         # logZ_s = logsumexp(alpha_s) after the most recent observation.
         self._hmm_log_evid = np.zeros(n, dtype=np.float64)
         self._n_obs = 0
-        self._sustain_count = 0
+        self._sustain_window: list[bool] = []   # sliding window of pass/fail
         self._last_decision: Optional[str] = None
         self._first_obs_t: Optional[float] = None  # t of first confident observation
 
@@ -311,23 +312,30 @@ class Matcher:
         elapsed = (ev_t - self._first_obs_t) if self._first_obs_t is not None else 0.0
         decided_id: Optional[str] = None
         decided_now = False
-        if (self._n_obs >= cfg.decision_min_obs
-                and elapsed >= cfg.decision_min_seconds
-                and len(top) >= 2
-                and top[0].prob >= cfg.decision_min_prob
-                and top[1].prob > 0
-                and (top[0].prob / top[1].prob) >= cfg.decision_min_ratio):
-            if self._last_decision == top[0].song_id:
-                self._sustain_count += 1
-            else:
-                self._sustain_count = 1
-                self._last_decision = top[0].song_id
-            if self._sustain_count >= cfg.decision_sustain:
-                decided_id = top[0].song_id
+
+        time_ok = (self._n_obs >= cfg.decision_min_obs
+                   and elapsed >= cfg.decision_min_seconds)
+        quality_ok = (len(top) >= 2
+                      and top[0].prob >= cfg.decision_min_prob
+                      and top[1].prob > 0
+                      and (top[0].prob / top[1].prob) >= cfg.decision_min_ratio)
+        candidate = top[0].song_id if (time_ok and len(top) > 0) else None
+
+        # If the top song changes, reset the window entirely.
+        if candidate != self._last_decision:
+            self._sustain_window = []
+            self._last_decision = candidate
+
+        if time_ok:
+            self._sustain_window.append(quality_ok)
+            if len(self._sustain_window) > cfg.decision_sustain_window:
+                self._sustain_window.pop(0)
+            passes = sum(self._sustain_window)
+            if (len(self._sustain_window) >= cfg.decision_sustain_window
+                    and passes >= cfg.decision_sustain
+                    and candidate is not None):
+                decided_id = candidate
                 decided_now = True
-        else:
-            self._sustain_count = 0
-            self._last_decision = None
 
         return MatchUpdate(
             top=top,
@@ -344,7 +352,7 @@ class Matcher:
         for s in self.songs:
             s.init_alpha()
         self._n_obs = 0
-        self._sustain_count = 0
+        self._sustain_window = []
         self._last_decision = None
         self._first_obs_t = None
 

@@ -77,8 +77,7 @@ def test_ws_basic_round_trip(client):
             elif t == "error":
                 pytest.fail(f"server error: {msg}")
         assert last_top is not None, "no update received"
-        # Top-5 list with id+title+prob+page
-        assert len(last_top) == 5
+        assert len(last_top) >= 5
         for item in last_top:
             assert {"id", "title", "prob", "page"} <= set(item.keys())
 

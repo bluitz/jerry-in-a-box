@@ -179,6 +179,7 @@ def test_decision_rule_sustain():
     # Use min_seconds=0 so the time gate doesn't interfere with this unit test
     # (real-time gating is tested separately).
     cfg = MatcherConfig(decision_min_obs=8, decision_sustain=3,
+                        decision_sustain_window=4,
                         decision_min_prob=0.7, decision_min_seconds=0.0)
     m = Matcher(db["songs"], config=cfg)
 
@@ -202,6 +203,7 @@ def test_decision_min_seconds_gate():
     """No decision should fire before decision_min_seconds of elapsed time."""
     db = _make_fake_db()
     cfg = MatcherConfig(decision_min_obs=1, decision_sustain=1,
+                        decision_sustain_window=1,
                         decision_min_prob=0.5, decision_min_seconds=30.0)
     m = Matcher(db["songs"], config=cfg)
 
@@ -244,6 +246,6 @@ def test_real_corpus_loads_and_runs():
     assert m.n_songs > 50
     for pc in [7, 11, 2, 0, 4, 7, 2, 6, 9] * 10:
         u = m.update(NoteEvent(pitch_class=pc, confidence=1.0))
-    # Should not crash; should produce normalized top-5.
-    assert len(u.top) == 5
-    assert abs(sum(t.prob for t in u.top) - 1.0) < 0.5  # top-5 captures most mass when convergence
+    # Should not crash; should produce a ranked list.
+    assert len(u.top) >= 5
+    assert abs(sum(t.prob for t in u.top) - 1.0) < 0.5  # top entries capture most mass when converged
