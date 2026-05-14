@@ -288,8 +288,14 @@ def compile_song_db() -> dict:
                 sections_out = [{"name": "All", "chords": [c.name for c in all_chords]}]
                 source_used = "legacy"
 
+        # If we still have no chord data the song is in the PDF as
+        # lyrics- or TAB-only; keep the title in the roster but mark
+        # it lyrics-only. The matcher skips zero-chord songs.
         if not all_chords:
-            continue
+            if t_lower in {pt.lower() for pt in pdf_records.keys()}:
+                source_used = "pdf-lyrics-only"
+            else:
+                continue
 
         artist = ""
         if t_lower in legacy_records:
