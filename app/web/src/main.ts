@@ -30,6 +30,7 @@ let pdf: PdfViewer | undefined;
 
 let lastUpdate: ServerUpdate | undefined;
 let nNoteSent = 0;
+let decidedSongId: string | null = null; // guard against repeated jumps
 
 function setStatus(text: string, kind: "idle" | "listening" | "error" | "decided" = "idle") {
   statusEl.textContent = text;
@@ -111,6 +112,7 @@ async function showSongPage(songTitle: string, pageNum: number): Promise<void> {
 backBtn.addEventListener("click", () => {
   songbookSec.hidden = true;
   listeningSec.hidden = false;
+  doReset();
 });
 prevPageBtn.addEventListener("click", async () => {
   if (!pdf) return;
@@ -130,8 +132,10 @@ function onServerMessage(m: any): void {
   } else if (m.type === "update") {
     lastUpdate = m as ServerUpdate;
     drawTop5(lastUpdate);
-    if (lastUpdate.decided && lastUpdate.decided_song_id) {
-      const top = lastUpdate.top.find(t => t.id === lastUpdate!.decided_song_id);
+    if (lastUpdate.decided && lastUpdate.decided_song_id
+        && lastUpdate.decided_song_id !== decidedSongId) {
+      decidedSongId = lastUpdate.decided_song_id;
+      const top = lastUpdate.top.find(t => t.id === decidedSongId);
       if (top && top.page) {
         setStatus(`decided: ${top.title}`, "decided");
         showSongPage(top.title, top.page).catch(err => {
@@ -145,16 +149,18 @@ function onServerMessage(m: any): void {
   }
 }
 
-// ---- Start / Reset ----
-startBtn.addEventListener("click", async () => {
-  startBtn.disabled = true;
+// ---- Start / Stop toggle ----
+async function startListening(): Promise<void> {
+  startBtn.textContent = "Stop listening";
+  startBtn.classList.add("secondary");
   setStatus("connecting…", "idle");
+
   client = new MatcherClient({
     onMessage: onServerMessage,
     onStatus: (s) => {
-      if (s === "open")    setStatus("listening", "listening");
-      if (s === "closed")  setStatus("disconnected", "error");
-      if (s === "error")   setStatus("connection error", "error");
+      if (s === "open")   setStatus(`listening @ ${pipeline?.sampleRate ?? 0} Hz`, "listening");
+      if (s === "closed") setStatus("disconnected", "error");
+      if (s === "error")  setStatus("connection error", "error");
     },
   });
   client.connect();
@@ -177,15 +183,55 @@ startBtn.addEventListener("click", async () => {
     setStatus(`listening @ ${pipeline.sampleRate} Hz`, "listening");
     resetBtn.disabled = false;
   } catch {
-    startBtn.disabled = false;
+    startBtn.textContent = "Start listening";
+    startBtn.classList.remove("secondary");
+    resetBtn.disabled = true;
+  }
+}
+
+function stopListening(): void {
+  pipeline?.stop();
+  pipeline = undefined;
+  client?.close();
+  client = undefined;
+  startBtn.textContent = "Start listening";
+  startBtn.classList.remove("secondary");
+  resetBtn.disabled = true;
+  setStatus("stopped", "idle");
+  clearUI();
+}
+
+startBtn.addEventListener("click", () => {
+  if (pipeline?.isActive) {
+    stopListening();
+  } else {
+    startListening();
   }
 });
 
-resetBtn.addEventListener("click", () => {
+// ---- Reset (clears matcher state + UI, keeps mic running) ----
+function clearUI(): void {
+  nowNoteEl.textContent = "—";
+  nowDetail.textContent = "—";
+  top5El.innerHTML = "";
+  for (const b of chromaBars) b.style.height = "0%";
+  lastUpdate = undefined;
+  decidedSongId = null;
+}
+
+function doReset(): void {
   client?.reset();
   nNoteSent = 0;
-  metaEl.textContent = "reset";
-});
+  clearUI();
+  if (pipeline?.isActive) {
+    setStatus(`listening @ ${pipeline.sampleRate} Hz`, "listening");
+    metaEl.textContent = "reset — keep playing";
+  } else {
+    metaEl.textContent = "reset";
+  }
+}
+
+resetBtn.addEventListener("click", doReset);
 
 // Health check on load
 fetch("/api/health")
