@@ -13,7 +13,7 @@ const metaEl     = $<HTMLSpanElement>("#meta");
 const nowNoteEl  = $<HTMLDivElement>("#now-note");
 const nowDetail  = $<HTMLDivElement>("#now-detail");
 const chromaEl   = $<HTMLDivElement>("#chroma-bars");
-const top5El     = $<HTMLOListElement>("#top5");
+const top20El    = $<HTMLOListElement>("#top20");
 
 const listeningSec = $<HTMLElement>("#listening");
 const songbookSec  = $<HTMLElement>("#songbook");
@@ -71,33 +71,54 @@ function drawNote(e: NoteEvent): void {
 
 // ---- Render: top-5 ----
 function drawTop5(u: ServerUpdate): void {
-  top5El.innerHTML = "";
+  top20El.innerHTML = "";
   for (let i = 0; i < u.top.length; i++) {
     const t = u.top[i];
     const li = document.createElement("li");
     if (u.decided && u.decided_song_id === t.id) li.classList.add("decided");
+
     const rank = document.createElement("div");
     rank.className = "rank";
     rank.textContent = String(i + 1);
+
     const title = document.createElement("div");
     title.className = "title";
-    title.textContent = t.title;
+    if (t.page) {
+      const link = document.createElement("a");
+      link.textContent = t.title;
+      link.href = "#";
+      link.addEventListener("click", (e) => {
+        e.preventDefault();
+        showSongPage(t.title, t.page!).catch(console.error);
+      });
+      title.appendChild(link);
+    } else {
+      title.textContent = t.title;
+    }
+
     const bar = document.createElement("div");
     bar.className = "bar";
     const fill = document.createElement("div");
     fill.className = "fill";
     fill.style.width = `${(t.prob * 100).toFixed(1)}%`;
     bar.appendChild(fill);
+
     const pct = document.createElement("div");
     pct.className = "pct";
     pct.textContent = `${(t.prob * 100).toFixed(1)}%`;
+
     li.append(rank, title, bar, pct);
-    top5El.appendChild(li);
+    top20El.appendChild(li);
   }
 }
 
 // ---- PDF view ----
 async function showSongPage(songTitle: string, pageNum: number): Promise<void> {
+  // Reveal the section FIRST so pdfContainer has real dimensions when
+  // pdf.show() measures clientWidth for canvas scaling.
+  listeningSec.hidden = true;
+  songbookSec.hidden = false;
+
   if (!pdf) {
     pdf = new PdfViewer(pdfContainer);
     await pdf.load("/api/songbook.pdf");
@@ -105,8 +126,6 @@ async function showSongPage(songTitle: string, pageNum: number): Promise<void> {
   await pdf.show(pageNum);
   pageTitle.textContent = songTitle;
   pageInfoEl.textContent = `${pdf.page} / ${pdf.numPages}`;
-  listeningSec.hidden = true;
-  songbookSec.hidden = false;
 }
 
 backBtn.addEventListener("click", () => {
@@ -171,7 +190,12 @@ async function startListening(): Promise<void> {
       client?.sendNote(e.pc, e.confidence, e.t);
       nNoteSent++;
       if (nNoteSent % 25 === 0 && lastUpdate) {
-        metaEl.textContent = `obs ${lastUpdate.n_obs} · entropy ${lastUpdate.entropy.toFixed(2)}`;
+        const elapsed = lastUpdate.elapsed_seconds ?? 0;
+        const remaining = Math.max(0, 30 - elapsed);
+        const timeStr = remaining > 0
+          ? `deciding in ${remaining.toFixed(0)}s`
+          : `obs ${lastUpdate.n_obs}`;
+        metaEl.textContent = `${timeStr} · entropy ${lastUpdate.entropy.toFixed(2)}`;
       }
     },
     onChroma: (e: ChromaEvent) => drawChroma(e.chroma),
@@ -213,7 +237,7 @@ startBtn.addEventListener("click", () => {
 function clearUI(): void {
   nowNoteEl.textContent = "—";
   nowDetail.textContent = "—";
-  top5El.innerHTML = "";
+  top20El.innerHTML = "";
   for (const b of chromaBars) b.style.height = "0%";
   lastUpdate = undefined;
   decidedSongId = null;

@@ -70,6 +70,7 @@ class MatchUpdate:
     decided_song_id: Optional[str]
     n_obs: int
     entropy: float
+    elapsed_seconds: float = 0.0
 
 
 @dataclass
@@ -87,9 +88,12 @@ class MatcherConfig:
     hmm_self_loop: float = 0.55
     # Decision rule — strict so a "decision" really means it.
     decision_min_obs: int = 24
+    decision_min_seconds: float = 30.0  # wall-clock time before any decision
     decision_min_prob: float = 0.92
     decision_min_ratio: float = 4.0   # top1/top2
     decision_sustain: int = 10        # consecutive updates meeting criteria
+    # How many songs to return in each update
+    top_k: int = 20
     # Sliding window — drop oldest evidence for songs that fall too far behind
     log_floor: float = -100.0
 
@@ -163,6 +167,7 @@ class Matcher:
         self._n_obs = 0
         self._sustain_count = 0
         self._last_decision: Optional[str] = None
+        self._first_obs_t: Optional[float] = None  # t of first confident observation
 
     @classmethod
     def from_paths(cls,
@@ -258,6 +263,8 @@ class Matcher:
 
         if w > 0:
             self._n_obs += 1
+            if self._first_obs_t is None:
+                self._first_obs_t = ev.t
             # Bag-of-notes update: weighted log-likelihood
             for i, s in enumerate(self.songs):
                 self._bag_log_sum[i] += w * s.pc_hist_log[pc]
@@ -278,9 +285,9 @@ class Matcher:
                 am = new_alpha.max()
                 self._hmm_log_evid[i] = am + math.log(float(np.exp(new_alpha - am).sum()))
 
-        return self._compute_top()
+        return self._compute_top(ev.t)
 
-    def _compute_top(self) -> MatchUpdate:
+    def _compute_top(self, ev_t: float = 0.0) -> MatchUpdate:
         cfg = self.config
         # Combine the two likelihoods log-linearly + uniform prior.
         score = (cfg.bag_weight * self._bag_log_sum
@@ -288,6 +295,7 @@ class Matcher:
                  + self._log_prior)
         post = _softmax_log(score)
         order = np.argsort(-post)
+        k = min(cfg.top_k, len(self.songs))
         top = [
             TopK(
                 song_id=self.songs[i].sid,
@@ -295,14 +303,16 @@ class Matcher:
                 prob=float(post[i]),
                 page=self.songs[i].page,
             )
-            for i in order[:5]
+            for i in order[:k]
         ]
         ent = _entropy(post)
 
         # Decision logic
+        elapsed = (ev_t - self._first_obs_t) if self._first_obs_t is not None else 0.0
         decided_id: Optional[str] = None
         decided_now = False
         if (self._n_obs >= cfg.decision_min_obs
+                and elapsed >= cfg.decision_min_seconds
                 and len(top) >= 2
                 and top[0].prob >= cfg.decision_min_prob
                 and top[1].prob > 0
@@ -325,6 +335,7 @@ class Matcher:
             decided_song_id=decided_id,
             n_obs=self._n_obs,
             entropy=ent,
+            elapsed_seconds=elapsed,
         )
 
     def reset(self) -> None:
@@ -335,6 +346,7 @@ class Matcher:
         self._n_obs = 0
         self._sustain_count = 0
         self._last_decision = None
+        self._first_obs_t = None
 
     @property
     def n_songs(self) -> int:

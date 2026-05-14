@@ -187,6 +187,7 @@ def _update_to_dict(update) -> dict:
         "decided_song_id": update.decided_song_id,
         "n_obs": int(update.n_obs),
         "entropy": float(update.entropy),
+        "elapsed_seconds": float(update.elapsed_seconds),
     }
 
 

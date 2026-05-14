@@ -7,6 +7,7 @@ export type ServerUpdate = {
   decided_song_id: string | null;
   n_obs: number;
   entropy: number;
+  elapsed_seconds: number;
 };
 
 export type ServerReady = { type: "ready"; n_songs: number };

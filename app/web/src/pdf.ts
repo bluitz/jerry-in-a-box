@@ -33,7 +33,10 @@ export class PdfViewer {
 
     const dpr = window.devicePixelRatio || 1;
     this.currentDpr = dpr;
-    const cssWidth = Math.min(this.container.clientWidth - 24, 900);
+    // Fall back to 800px if the container is hidden / zero-width (shouldn't
+    // happen now that showSongPage reveals the section first, but defensive).
+    const containerW = this.container.clientWidth || 800;
+    const cssWidth = Math.min(containerW - 24, 900);
     const unscaled = page.getViewport({ scale: 1 });
     const scale = (cssWidth / unscaled.width) * dpr;
     const viewport = page.getViewport({ scale });

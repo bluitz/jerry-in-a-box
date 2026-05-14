@@ -176,7 +176,10 @@ def test_decision_rule_sustain():
     behavior on a stream fully consistent with Song A.)
     """
     db = _make_fake_db()
-    cfg = MatcherConfig(decision_min_obs=8, decision_sustain=3, decision_min_prob=0.7)
+    # Use min_seconds=0 so the time gate doesn't interfere with this unit test
+    # (real-time gating is tested separately).
+    cfg = MatcherConfig(decision_min_obs=8, decision_sustain=3,
+                        decision_min_prob=0.7, decision_min_seconds=0.0)
     m = Matcher(db["songs"], config=cfg)
 
     g, c, d = (7, 11, 2), (0, 4, 7), (2, 6, 9)
@@ -193,6 +196,25 @@ def test_decision_rule_sustain():
     assert first_decision_at >= cfg.decision_min_obs - 1
     # By the end of the stream, A must be top.
     assert final_top.top[0].song_id == "song_a"
+
+
+def test_decision_min_seconds_gate():
+    """No decision should fire before decision_min_seconds of elapsed time."""
+    db = _make_fake_db()
+    cfg = MatcherConfig(decision_min_obs=1, decision_sustain=1,
+                        decision_min_prob=0.5, decision_min_seconds=30.0)
+    m = Matcher(db["songs"], config=cfg)
+
+    # Feed a very strong Song C signal but all events at t=0 (< 30s)
+    a, d, e = (9, 1, 4), (2, 6, 9), (4, 8, 11)
+    for pc in list(a) * 20 + list(d) * 10 + list(e) * 10:
+        u = m.update(NoteEvent(pitch_class=pc, confidence=1.0, t=0.0))
+        assert not u.decided, "should not decide before 30s"
+
+    # Now feed one more event at t=35 — elapsed = 35 - 0 = 35s >= 30s.
+    for pc in list(a) * 5:
+        u = m.update(NoteEvent(pitch_class=pc, confidence=1.0, t=35.0))
+    assert u.elapsed_seconds >= 30.0
 
 
 def test_reset_clears_state():
