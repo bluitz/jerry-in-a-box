@@ -125,6 +125,37 @@ python -m pytest app/tests/unit/ -v
 # 22 tests: chord parser, matcher behavior, server REST + WebSocket
 ```
 
+### Speaker -> mic round-trip test (manual)
+
+The unit tests cover the file -> matcher path only. To verify the FULL
+end-to-end pipeline including the laptop speakers and mic, there is
+a manual test that plays a reference recording through the system
+speakers, captures it with the default mic, and checks that the
+matcher ranks the expected song highly.
+
+```bash
+pip install sounddevice  # only needed for this test
+
+# 1) Calibration (5s) -- confirm the mic actually hears the speakers
+python -m app.tools.speaker_mic_test --check-only
+
+# 2) Full 35s test, default file is test-audio/Friend of the devil.m4a,
+#    expected target is "friend-of-the-devil"
+python -m app.tools.speaker_mic_test \
+    --duration 35 --rank-threshold 20 \
+    --save-wav /tmp/jerry-mic-capture.wav
+
+# Or via pytest (gated behind an env var so it doesn't run in normal CI)
+JERRY_RUN_SPEAKER_MIC=1 pytest -s app/tests/manual/
+```
+
+Requires macOS (uses `afplay`) and a microphone. The first run will
+trigger a system permission prompt — Terminal/iTerm needs Microphone
+permission in System Settings > Privacy & Security > Microphone. If
+the calibration step reports RMS below ~0.005 the mic isn't picking
+up the speakers; raise system output volume and confirm the right
+output device is active.
+
 ## What's NOT in here
 
 - No song lyrics, prose, or other PDF body text is extracted, stored, or
