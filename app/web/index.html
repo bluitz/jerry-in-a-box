@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Jerry in a Box</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Jerry in a Box</h1>
+        <div id="status" class="status idle">tap to start</div>
+      </header>
+
+      <section id="listening">
+        <div class="row">
+          <button id="start" type="button">Start listening</button>
+          <button id="reset" type="button" disabled>Reset</button>
+          <span id="meta"></span>
+        </div>
+
+        <div class="now">
+          <div class="now-pitch">
+            <div class="label">current pitch</div>
+            <div id="now-note" class="big">—</div>
+            <div id="now-detail" class="muted">—</div>
+          </div>
+          <div class="chroma">
+            <div class="label">chroma (last ~0.5 s)</div>
+            <div id="chroma-bars" class="bars"></div>
+          </div>
+        </div>
+
+        <div class="topbox">
+          <div class="label">top 5 candidate songs</div>
+          <ol id="top5" class="top5"></ol>
+        </div>
+      </section>
+
+      <section id="songbook" hidden>
+        <div class="row">
+          <button id="back" type="button">← Back to listening</button>
+          <span id="page-title"></span>
+          <span class="grow"></span>
+          <button id="prev-page" type="button">‹</button>
+          <span id="page-info"></span>
+          <button id="next-page" type="button">›</button>
+        </div>
+        <div id="pdf-container"></div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
