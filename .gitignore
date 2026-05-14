@@ -18,3 +18,6 @@ app/web/dist/
 
 # Editor
 .vscode/
+
+# Reference test recordings (large audio, copyrighted)
+test-audio/

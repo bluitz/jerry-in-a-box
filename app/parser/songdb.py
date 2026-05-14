@@ -47,11 +47,13 @@ from app.parser.chords import (
     parse_chord_string,
     PC_TO_NAME,
 )
+from app.parser.pdf_extract import extract_chord_data
 
 
 REPO = Path(__file__).resolve().parents[2]
 CSV_PATH = REPO / "sources" / "jerry_song_book.csv"
 LEGACY_JSON = REPO / "jerry-in-a-box" / "data" / "songs.json"
+PDF_PATH = REPO / "jerry-garcia-song-book-ver-9-online.pdf"
 OUT_PATH = REPO / "app" / "data" / "songs.json"
 
 
@@ -199,7 +201,20 @@ def compile_song_db() -> dict:
 
     csv_records = _read_csv_sections(CSV_PATH)
 
-    titles = sorted(set(legacy_records.keys()) | {t.lower() for t in csv_records.keys()})
+    # Pull chord progressions directly from the PDF for any song the CSV
+    # didn't cover (the CSV only has ~75 songs; the book has ~250).
+    pdf_records: dict[str, list[tuple[str, str]]] = {}
+    if PDF_PATH.exists():
+        try:
+            pdf_records = extract_chord_data(PDF_PATH)
+        except Exception as e:
+            print(f"warning: PDF extraction failed: {e}")
+
+    titles = sorted(
+        set(legacy_records.keys())
+        | {t.lower() for t in csv_records.keys()}
+        | {t.lower() for t in pdf_records.keys()}
+    )
 
     # Build a title -> canonical-display-title map (prefer the casing used
     # in the legacy JSON when available; else the CSV).
@@ -207,11 +222,17 @@ def compile_song_db() -> dict:
     for t_lower in titles:
         if t_lower in legacy_records:
             canon_title[t_lower] = legacy_records[t_lower]["title"]
-        else:
-            for csv_title in csv_records.keys():
-                if csv_title.lower() == t_lower:
-                    canon_title[t_lower] = csv_title
-                    break
+            continue
+        for csv_title in csv_records.keys():
+            if csv_title.lower() == t_lower:
+                canon_title[t_lower] = csv_title
+                break
+        if t_lower in canon_title:
+            continue
+        for pdf_title in pdf_records.keys():
+            if pdf_title.lower() == t_lower:
+                canon_title[t_lower] = pdf_title
+                break
 
     songs_out: list[dict] = []
     for t_lower in titles:
@@ -228,6 +249,7 @@ def compile_song_db() -> dict:
 
         sections_out: list[dict] = []
         all_chords: list[Chord] = []
+        source_used = ""
         if csv_secs:
             for section_name, raw in csv_secs:
                 ch = parse_chord_string(raw)
@@ -238,14 +260,35 @@ def compile_song_db() -> dict:
                     "chords": [c.name for c in ch],
                 })
                 all_chords.extend(ch)
+            if all_chords:
+                source_used = "csv"
+
+        if not all_chords:
+            # Fall back to PDF-extracted progressions.
+            pdf_secs = []
+            for k, v in pdf_records.items():
+                if k.lower() == t_lower:
+                    pdf_secs = v
+                    break
+            for section_name, raw in pdf_secs:
+                ch = parse_chord_string(raw)
+                if not ch:
+                    continue
+                sections_out.append({
+                    "name": section_name,
+                    "chords": [c.name for c in ch],
+                })
+                all_chords.extend(ch)
+            if all_chords:
+                source_used = "pdf"
 
         if not all_chords and t_lower in legacy_records:
             all_chords = _flatten_legacy_sections(legacy_records[t_lower])
             if all_chords:
                 sections_out = [{"name": "All", "chords": [c.name for c in all_chords]}]
+                source_used = "legacy"
 
         if not all_chords:
-            # Couldn't parse anything for this song — skip rather than emit empty.
             continue
 
         artist = ""
@@ -268,6 +311,7 @@ def compile_song_db() -> dict:
             "id":           _slugify(title),
             "title":        title,
             "artist":       artist,
+            "source":       source_used,
             "key_pc":       key_pc,
             "key_mode":     key_mode,
             "key_name":     PC_TO_NAME[key_pc] + ("" if key_mode == "maj" else "m"),
