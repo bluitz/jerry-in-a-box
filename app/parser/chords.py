@@ -188,6 +188,39 @@ def parse_chord(token: str) -> Optional[Chord]:
 # optional accidental, then any non-whitespace until the next delimiter.
 _CHORD_TOKEN = re.compile(r"[A-G][A-Za-z0-9#bø°△+/()]*")
 
+# Repeat bracket:  (Nx)? ||:  content  :||  (Nx)?
+# The `||` without a colon also starts a repeat when it precedes `:||`.
+_REPEAT_RE = re.compile(
+    r"(?:(\d+)\s*[xX]\s*)?"   # optional count before: "3x"
+    r"\|\|:?"                  # begin: "||:" or "||"
+    r"\s*(.*?)\s*"             # content (non-greedy)
+    r":\|\|"                   # end: ":||"
+    r"(?:\s*(\d+)\s*[xX])?",  # optional count after
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _expand_repeats(s: str) -> str:
+    """Expand ||: ... :|| repeat brackets by duplicating their content.
+
+    Examples:
+        "|| G / / / | C / / G :||"
+          -> "G / / / | C / / G | G / / / | C / / G"
+
+        "||: G / / / | C6 / / / :||  D / / /"
+          -> "G / / / | C6 / / / | G / / / | C6 / / / | D / / /"
+
+        "3x ||: G / / / | C / / G :||"
+          -> "G / / / | C / / G | G / / / | C / / G | G / / / | C / / G"
+    """
+    def _repl(m: re.Match) -> str:
+        n_before, content, n_after = m.group(1), m.group(2), m.group(3)
+        n = int(n_before or n_after or 2)
+        content = content.strip().strip("|").strip()
+        return " | ".join([content] * n)
+
+    return _REPEAT_RE.sub(_repl, s)
+
 
 def parse_chord_string(s: str, beats_per_bar: int = 4) -> list[Chord]:
     """Parse a free-form chord string (a measure-style line from the CSV).
@@ -196,11 +229,13 @@ def parse_chord_string(s: str, beats_per_bar: int = 4) -> list[Chord]:
         | -- bar line
         / -- one beat of "repeat last chord"
         % -- repeat the previous bar in full
+        ||: ... :|| -- repeat bracket (play content N times, default 2)
 
     Returned list is a flat sequence of chords (one entry per beat). The
     bigram statistics the matcher uses are derived from chord *changes*,
     so per-beat resolution is fine.
     """
+    s = _expand_repeats(s)
     tokens = re.findall(r"[A-G][A-Za-z0-9#bø°△+/()]*|\||%|/", s)
     progression: list[Chord] = []
     last_bar: list[Chord] = []

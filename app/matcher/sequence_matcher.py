@@ -238,14 +238,33 @@ class SequenceMatcher:
 
     @staticmethod
     def _family(q: str) -> str:
-        # Order matters: "maj"/"maj7" must match before bare "m" prefix,
-        # and "dim" before "m".
+        """Coarse quality family for chord equality testing.
+
+        Families: "maj", "min", "dom" (dominant-7 group), "dim", "aug",
+        "sus". This keeps musically distinct chords distinct: D ≠ D7
+        (different family) and Am ≠ A (different family), so the matcher
+        doesn't give full-credit to D vs D7 simply because both loosely
+        "feel major".
+
+        Extensions within a family (maj7, maj9) are folded because the
+        chord classifier we use only emits maj/min triads; 7th/6th etc.
+        only come from the songbook chart side.
+        """
         if q.startswith("maj") or q in ("", "maj"):
             return "maj"
         if q.startswith("dim"):
             return "dim"
+        if q.startswith("aug"):
+            return "aug"
+        if q.startswith("sus") or q.startswith("7sus"):
+            return "sus"
         if q.startswith("m") or q.startswith("min"):
             return "min"
+        # Dominant-7 family: "7", "9", "7sus4" catch-all.
+        # "6" is an added-note chord — closer to maj than dom, so keep
+        # it as "maj" to avoid over-penalising C6 vs C etc.
+        if "7" in q:
+            return "dom"
         return "maj"
 
     @staticmethod
@@ -255,28 +274,42 @@ class SequenceMatcher:
         if m == 0 or n == 0:
             return 0.0
         # Longest run of consecutive chord-similarity anywhere in song.
-        # We accept a "near match" (same root, different family) as a
-        # half-credit step, so a single Dm classification in the middle
-        # of D-Am-D-Am doesn't break the run; but two consecutive
-        # mismatches do. Track length AND distinct-chord-count so
-        # alternating two-chord vamps don't dominate.
+        # We accept:
+        #   - full match (same root + same family): +1.0
+        #   - near match (same root, different family): +0.5
+        #   - one SONG-SIDE gap per run: a song chord that isn't heard in
+        #     the recording (e.g. a passing turnaround chord like the G at
+        #     the end of "|| G / / / | C / / G :||" that gets folded into
+        #     the 2s C bin). Costs 0 score, advances only the song cursor.
+        # Two consecutive root-mismatches (or any obs-side mismatch) end
+        # the run. Track distinct-chord-count so alternating two-chord
+        # vamps don't dominate.
+        MAX_SONG_GAPS = 1
         best_run_score = 0.0
         for i in range(m):
             for j in range(n):
-                k = 0
+                k = 0   # obs cursor offset
+                l = 0   # song cursor offset
+                gaps = 0
                 run_score = 0.0
                 seen: set[tuple[int, str]] = set()
-                while i + k < m and j + k < n:
+                while i + k < m and j + l < n:
                     a = obs[i + k]
-                    b = song[j + k]
+                    b = song[j + l]
                     if SequenceMatcher._chord_eq(a, b):
                         seen.add(SequenceMatcher._fam_key(a))
                         run_score += 1.0
                         k += 1
+                        l += 1
                     elif a[0] == b[0]:  # same root, family mismatch
                         seen.add(SequenceMatcher._fam_key(a))
                         run_score += 0.5
                         k += 1
+                        l += 1
+                    elif gaps < MAX_SONG_GAPS:
+                        # Skip this song chord (unheard passing chord).
+                        gaps += 1
+                        l += 1
                     else:
                         break
                 if k >= 2 and run_score >= 2.0:
@@ -285,6 +318,15 @@ class SequenceMatcher:
                     # don't unfairly find a "needle in haystack" match
                     # — they have to cover the same FRACTION of obs.
                     rs = (run_score / float(m)) * (float(distinct) ** 1.2)
+                    # Extra penalty for songs much longer than the
+                    # observation: a 82-chord song has far more
+                    # opportunities to stumble onto a matching
+                    # subsequence than a 15-chord song, so the same
+                    # run score should count less.  Divide by
+                    # sqrt(song_len / obs_len) when song is longer.
+                    ratio = n / max(1, m)
+                    if ratio > 1.0:
+                        rs = rs / (ratio ** 0.5)
                     if rs > best_run_score:
                         best_run_score = rs
 

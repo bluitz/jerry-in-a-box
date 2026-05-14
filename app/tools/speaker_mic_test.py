@@ -273,6 +273,70 @@ def run_test(audio_path: Path, target_id: str,
     }
 
 
+def _run_trials(args) -> int:
+    """Run N speaker->mic trials and report pass rate."""
+    results: list[dict] = []
+    print(f"\n=== Running {args.trials} trials ({args.duration}s each) ===",
+          file=sys.stderr)
+    print(f"  source: {args.audio}", file=sys.stderr)
+    print(f"  target: {args.target}", file=sys.stderr)
+    print(f"  pass:   target rank <= {args.rank_threshold}\n",
+          file=sys.stderr)
+
+    for i in range(1, args.trials + 1):
+        print(f"--- Trial {i}/{args.trials} ---", file=sys.stderr)
+        try:
+            r = run_test(
+                audio_path=args.audio,
+                target_id=args.target,
+                duration_s=args.duration,
+                rank_threshold=args.rank_threshold,
+                save_wav_to=None,
+                verbose=False,
+            )
+        except Exception as e:
+            print(f"  ERROR: {e}", file=sys.stderr)
+            results.append({"trial": i, "error": str(e), "passed": False})
+            continue
+        # Compact per-trial line.
+        rms = r["capture_rms"]
+        rank = r["final_rank"]
+        prob = r["final_prob"] * 100
+        top1 = r["final_top"][0][1] if r["final_top"] else "-"
+        verdict = "PASS" if r["passed"] else (
+            "QUIET" if r["capture_too_quiet"] else "FAIL")
+        print(f"  Trial {i}: {verdict}  rank={rank}  prob={prob:.1f}%  "
+              f"rms={rms:.4f}  top1={top1!r}",
+              file=sys.stderr)
+        results.append({
+            "trial": i,
+            "passed": r["passed"],
+            "rank": r["final_rank"],
+            "prob": r["final_prob"],
+            "rms": r["capture_rms"],
+            "too_quiet": r["capture_too_quiet"],
+            "top1": top1,
+        })
+
+    n_pass = sum(1 for r in results if r.get("passed"))
+    n_quiet = sum(1 for r in results if r.get("too_quiet"))
+
+    print(f"\n=== {n_pass}/{args.trials} trials passed "
+          f"(rank <= {args.rank_threshold}) ===", file=sys.stderr)
+    if n_quiet:
+        print(f"  {n_quiet} trial(s) had inaudible capture; raise volume "
+              f"or check Mic permission.", file=sys.stderr)
+
+    print(json.dumps({
+        "trials": args.trials,
+        "passed": n_pass,
+        "too_quiet": n_quiet,
+        "rank_threshold": args.rank_threshold,
+        "per_trial": results,
+    }, indent=2))
+    return 0 if n_pass == args.trials else 1
+
+
 def _check_only(audio_path: Path, sample_rate: int = 44100) -> int:
     """Calibration mode: play the file for 5 seconds, record from the
     mic, and report capture levels. Useful for verifying speaker
@@ -325,11 +389,17 @@ def main() -> int:
                    help="Optional path to save the captured audio.")
     p.add_argument("--check-only", action="store_true",
                    help="Just verify mic can hear speakers (5s check).")
+    p.add_argument("--trials", type=int, default=1,
+                   help="Run this many independent trials and "
+                        "report pass rate.")
     p.add_argument("--quiet", action="store_true")
     args = p.parse_args()
 
     if args.check_only:
         return _check_only(args.audio)
+
+    if args.trials > 1:
+        return _run_trials(args)
 
     result = run_test(
         audio_path=args.audio,
